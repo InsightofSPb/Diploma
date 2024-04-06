@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+
+<launch>
+  <arg name="paused" default="false"/>
+
+  <include file="$(find hector_gazebo_worlds)/launch/rolling_landscape_120m.launch">
+  </include>
+
+  <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_realsense_d435.launch" />
+  
+</launch>
