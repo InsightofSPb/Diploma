@@ -6,6 +6,5 @@
   <include file="$(find hector_gazebo_worlds)/launch/rolling_landscape_120m.launch">
   </include>
 
-  <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_realsense_d435.launch" />
-  
+  <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_main.launch" />
 </launch>

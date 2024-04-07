@@ -12,13 +12,15 @@ from cv_bridge import CvBridge, CvBridgeError
 Kz = 0.4
 Bz = 0.5
 
-Kx = 0.4
-Bx = 0.5
+Kx = 0.1
+Bx = 0.3
 
-Ky = 0.4
-By = 0.5
+Ky = 0.1
+By = 0.3
 
-des_range = 4.5
+
+
+des_range = 2.5
 
 
 start_pos = (-10, -10, des_range)
@@ -34,22 +36,27 @@ point_list = [start_pos,
               (3, 3, des_range), 
               start_pos]
 
-class Controller:
-    def __init__(self) -> None:
+class PathNode:
+    def __init__(self, rate=10) -> None:
+
         rospy.init_node("controller_node")
-        self.enable_motors()
-        self.current_range = 0.0
-        self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)  
         rospy.Subscriber("/ground_truth/state", Odometry, self.state_callback)  
+        rospy.Subscriber("/asus_camera/color/image_raw", Image, self.image_callback_rgb)
+        #rospy.Subscriber("/asus_camera/depth/image_raw", Image, self.image_callback_depth)
+        rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.define_borders)
+        rospy.Subscriber("/sonar_height", Range, self.read_laser_data_alt)
+        self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1) 
+        self.rate = rospy.Rate(rate)
+        self.enable_motors()
+
         self.position = Point()
         self.twist = Twist()
-        self.rate = rospy.Rate(10)
-        self.bridge = CvBridge()
-        #rospy.Subscriber("/camera/depth/points", PointCloud2, self.read_laser_data)
-        rospy.Subscriber("/camera/rgb/image_raw", Image, self.image_callback)
-        rospy.Subscriber("/sonar_height", Range, self.read_laser_data_alt)
+        self.current_range = 0.0
 
-    def enable_motors(self):
+        self.bridge = CvBridge()
+    
+    @staticmethod
+    def enable_motors():
         try:
             rospy.wait_for_service('/enable_motors')
             call_em = rospy.ServiceProxy('/enable_motors', EnableMotors)
@@ -57,34 +64,48 @@ class Controller:
 
         except rospy.ServiceException as e:
             print("Service call failed: %s"%e)
-
-    def state_callback(self, msg):
-        self.position = msg.pose.pose.position
-        self.twist = msg.twist.twist
     
-    def image_callback(self, msg):
+    def image_callback_rgb(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            cv2.imshow("RGB window", cv_image)
+            cv2.waitKey(3)
         except CvBridgeError as e:
             print(e)
 
-        # grey_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-        # _, mask = cv2.threshold(grey_image, 8, 255, cv2.THRESH_BINARY_INV)
-        # cv_image = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-        
-        cv2.imshow("Image window2", cv_image)
-        cv2.waitKey(3)
+    def image_callback_depth(self, msg):
+        try:
+            depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+            cv_image_normalized = cv2.normalize(depth_image, None, 0, 255, cv2.NORM_MINMAX)
+            cv_image_normalized = np.uint8(cv_image_normalized)
+            colored_depth_image = cv2.applyColorMap(cv_image_normalized, cv2.COLORMAP_WINTER)
+            cv2.imshow("Depth Image", colored_depth_image)
+            cv2.waitKey(1)
+        except CvBridgeError as e:
+            print(e)
+
+    def define_borders(self, msg):
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            cv2.imshow("Downward Image", cv_image)
+            cv2.waitKey(3)
+        except CvBridgeError as e:
+            print(e)
 
 
     def read_laser_data_alt(self,msg):
         self.current_range = msg.range
+
+    def state_callback(self, msg):
+        self.position = msg.pose.pose.position
+        self.twist = msg.twist.twist
 
     def spin(self):
         point_list_real = []
         while not rospy.is_shutdown():
             for point in point_list:
                 x_des, y_des = point[0], point[1]
-                while not np.allclose([self.position.x, self.position.y, self.current_range], [x_des, y_des, des_range], rtol=0.1, atol=0.1):
+                while not np.allclose([self.position.x, self.position.y, self.current_range], [x_des, y_des, des_range], rtol=0.2, atol=0.2):
                     ux = Kx * (x_des - self.position.x) - Bx * self.twist.linear.x
                     uy = Ky * (y_des - self.position.y) - By * self.twist.linear.y
                     uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
@@ -104,7 +125,7 @@ class Controller:
 
                 if len(point_list) == len(point_list_real):
                     print(point_list_real)
-                    plot_trajectory(points_des=point_list, points_real=point_list_real)
+                    #plot_trajectory(points_des=point_list, points_real=point_list_real)
 
 
 def plot_trajectory(points_des = None, points_real = None):
@@ -134,10 +155,10 @@ def plot_trajectory(points_des = None, points_real = None):
     ax.set_xticks(np.arange(min(des_x + real_x), max(des_x + real_x) + 1, 1))
 
     plt.savefig('src/hector_quadrotor/controller/trajectory.png')
-    plt.show()
+    #plt.show()
 
 def main():
-    ctrl = Controller()
+    ctrl = PathNode()
     ctrl.spin()
 
 
