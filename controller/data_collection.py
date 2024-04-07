@@ -8,20 +8,19 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from cv_bridge import CvBridge, CvBridgeError
-from statistics import mean
 
 
 Kz = 0.2
 Bz = 0.5
 
-Kx = 0.1
-Bx = 0.3
+Kx = 0.005
+Bx = 0.2
 
-Ky = 0.1
-By = 0.3
+Ky = 0.005
+By = 0.2
 
 
-des_range = 3
+des_range = 4
 
 
 start_pos = (25, -30)
@@ -43,7 +42,8 @@ class PathNode:
         self.position = Point()
         self.twist = Twist()
         self.current_range = 0.0
-
+        self.dot_position = None
+        
         self.bridge = CvBridge()
     
     @staticmethod
@@ -84,25 +84,9 @@ class PathNode:
             
             if contours:
                 largest_contour = max(contours, key=cv2.contourArea)
-                epsilon = 0.01 * cv2.arcLength(largest_contour, True)
-                approx = cv2.approxPolyDP(largest_contour, epsilon, True)
-                distances = [cv2.norm([self.position.x, self.position.y] - point[0]) for point in approx]
-                closest_indices = np.argsort(distances)[:3]
-                
-                closest_points = [tuple(approx[index][0]) for index in closest_indices]
-                
-                offset_points = list(closest_points)
-                mean_first_elements = mean(x[0] for x in offset_points)
-                mean_second_elements = mean(x[1] for x in offset_points)
-                moved_points = [(x[0] + 0.1 * mean_first_elements, x[1] - 2 * mean_second_elements) for x in offset_points]
-
-                for point in closest_points:
-                    cv2.circle(cv_image, point, 5, (0, 0, 255), -1)
-                
-                for pt in moved_points:
-                    int_point = np.round(pt).astype("int")
-                    cv2.circle(cv_image, tuple(int_point), 5, (255, 255, 0), -1)
-                                 
+                topmost_point = tuple(largest_contour[largest_contour[:,:,1].argmin()][0])
+                self.dot_position = topmost_point  # Update the dot position
+                cv2.circle(cv_image, topmost_point, 5, (0, 0, 255), -1)
                 cv2.drawContours(cv_image, [largest_contour], -1, (0, 255, 0), 3)
             
         except CvBridgeError as e:
@@ -125,19 +109,20 @@ class PathNode:
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
-            if elapsed_time < 100:
+            if elapsed_time < 5:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
-                ux = 0.2
+                ux = 0
                 uy = 0
                 
-            elif elapsed_time > 100:
-
-                ux = Kx * (10 - self.position.x) - Bx * self.twist.linear.x
-                uy = Ky * (10 - self.position.y) - By * self.twist.linear.y
+            else:
+                # Calculate the error between the drone's position and the dot's position
+                error_x = self.dot_position[0] - self.position.x
+                error_y = self.dot_position[1] - self.position.y
+                
+                # Adjust the drone's velocity based on the error
+                ux = Kx * error_x - Bx * self.twist.linear.x
+                uy = Ky * error_y - By * self.twist.linear.y
                 uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
-
-                print(f'X= {self.position.x}, Y= {self.position.y}, Z= {self.current_range}')
-                print(f'DES_X= {10}, DES_Y= {10}, DES_Z = {des_range}')
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
