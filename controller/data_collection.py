@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from cv_bridge import CvBridge, CvBridgeError
+from statistics import mean
+
 
 Kz = 0.2
 Bz = 0.5
@@ -19,7 +21,7 @@ Ky = 0.1
 By = 0.3
 
 
-des_range = 2.5
+des_range = 3
 
 
 start_pos = (25, -30)
@@ -84,27 +86,24 @@ class PathNode:
                 largest_contour = max(contours, key=cv2.contourArea)
                 epsilon = 0.01 * cv2.arcLength(largest_contour, True)
                 approx = cv2.approxPolyDP(largest_contour, epsilon, True)
-                
-
                 distances = [cv2.norm([self.position.x, self.position.y] - point[0]) for point in approx]
+                closest_indices = np.argsort(distances)[:3]
                 
-                # Get indices of the five closest points
-                closest_indices = np.argsort(distances)[:5]
-                
-                # Extract the coordinates of the five closest points
                 closest_points = [tuple(approx[index][0]) for index in closest_indices]
                 
-                # Draw the five closest points on the image
-                for point in closest_points:
-                    cv2.circle(cv_image, point, 5, (0, 255, 0), -1)
-                
-                if len(closest_points) > 1:
-                    pts = np.array(closest_points, np.int32).reshape((-1, 1, 2))
-                    cv2.polylines(cv_image, [pts], False, (255, 0, 0), 2)
-                
+                offset_points = list(closest_points)
+                mean_first_elements = mean(x[0] for x in offset_points)
+                mean_second_elements = mean(x[1] for x in offset_points)
+                moved_points = [(x[0] + 0.1 * mean_first_elements, x[1] - 2 * mean_second_elements) for x in offset_points]
 
+                for point in closest_points:
+                    cv2.circle(cv_image, point, 5, (0, 0, 255), -1)
+                
+                for pt in moved_points:
+                    int_point = np.round(pt).astype("int")
+                    cv2.circle(cv_image, tuple(int_point), 5, (255, 255, 0), -1)
+                                 
                 cv2.drawContours(cv_image, [largest_contour], -1, (0, 255, 0), 3)
-                cv2.drawContours(gray, [largest_contour], -1, (0, 255, 0), 3)
             
         except CvBridgeError as e:
             print(e)
@@ -112,7 +111,7 @@ class PathNode:
         finally:
             cv2.imshow("Downward Image", cv_image)
             cv2.waitKey(3)
-            cv2.imshow("Grey Image", gray)
+            #cv2.imshow("Grey Image", gray)
 
     def read_laser_data_alt(self,msg):
         self.current_range = msg.range
@@ -126,12 +125,12 @@ class PathNode:
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
-            if elapsed_time < 50:
+            if elapsed_time < 100:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
                 ux = 0.2
                 uy = 0
                 
-            elif elapsed_time > 50:
+            elif elapsed_time > 100:
 
                 ux = Kx * (10 - self.position.x) - Bx * self.twist.linear.x
                 uy = Ky * (10 - self.position.y) - By * self.twist.linear.y
