@@ -40,7 +40,7 @@
           <geometry>
             <mesh>
               <uri>file://pile_solid_1.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 0.5</scale>
             </mesh>
           </geometry>
         </collision>
@@ -48,7 +48,7 @@
           <geometry>
             <mesh>
               <uri>file://pile_solid_1.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 0.5</scale>
             </mesh>
           </geometry>
           <cast_shadows>false</cast_shadows>
@@ -63,7 +63,7 @@
           <geometry>
             <mesh>
               <uri>file://plane.dae</uri>
-              <scale>10 10 1</scale>
+              <scale>2 2 1</scale>
             </mesh>
           </geometry>
         </collision>
@@ -71,7 +71,7 @@
           <geometry>
             <mesh>
               <uri>file://plane.dae</uri>
-              <scale>5 5 1</scale>
+              <scale>2 2 1</scale>
             </mesh>
           </geometry>
           <cast_shadows>false</cast_shadows>
