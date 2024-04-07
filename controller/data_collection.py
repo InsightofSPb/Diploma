@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cv_bridge import CvBridge, CvBridgeError
 
-Kz = 0.4
+Kz = 0.2
 Bz = 0.5
 
 Kx = 0.1
@@ -19,22 +19,11 @@ Ky = 0.1
 By = 0.3
 
 
-
 des_range = 2.5
 
 
-start_pos = (-10, -10, des_range)
-point_list = [start_pos, 
-              (0, 0, des_range) ,
-              (5, 3, des_range) ,
-              (10, 0, des_range),
-              (15, 3, des_range) , 
-              (10, 6, des_range),
-              (10, 15, des_range),
-              (12, 10, des_range), 
-              (6, 6, des_range), 
-              (3, 3, des_range), 
-              start_pos]
+start_pos = (25, -30)
+
 
 class PathNode:
     def __init__(self, rate=10) -> None:
@@ -87,11 +76,43 @@ class PathNode:
     def define_borders(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            cv2.imshow("Downward Image", cv_image)
-            cv2.waitKey(3)
+            gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if contours:
+                largest_contour = max(contours, key=cv2.contourArea)
+                epsilon = 0.01 * cv2.arcLength(largest_contour, True)
+                approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+                
+
+                distances = [cv2.norm([self.position.x, self.position.y] - point[0]) for point in approx]
+                
+                # Get indices of the five closest points
+                closest_indices = np.argsort(distances)[:5]
+                
+                # Extract the coordinates of the five closest points
+                closest_points = [tuple(approx[index][0]) for index in closest_indices]
+                
+                # Draw the five closest points on the image
+                for point in closest_points:
+                    cv2.circle(cv_image, point, 5, (0, 255, 0), -1)
+                
+                if len(closest_points) > 1:
+                    pts = np.array(closest_points, np.int32).reshape((-1, 1, 2))
+                    cv2.polylines(cv_image, [pts], False, (255, 0, 0), 2)
+                
+
+                cv2.drawContours(cv_image, [largest_contour], -1, (0, 255, 0), 3)
+                cv2.drawContours(gray, [largest_contour], -1, (0, 255, 0), 3)
+            
         except CvBridgeError as e:
             print(e)
-
+        
+        finally:
+            cv2.imshow("Downward Image", cv_image)
+            cv2.waitKey(3)
+            cv2.imshow("Grey Image", gray)
 
     def read_laser_data_alt(self,msg):
         self.current_range = msg.range
@@ -101,61 +122,32 @@ class PathNode:
         self.twist = msg.twist.twist
 
     def spin(self):
-        point_list_real = []
+        time_st = rospy.get_time()
         while not rospy.is_shutdown():
-            for point in point_list:
-                x_des, y_des = point[0], point[1]
-                while not np.allclose([self.position.x, self.position.y, self.current_range], [x_des, y_des, des_range], rtol=0.2, atol=0.2):
-                    ux = Kx * (x_des - self.position.x) - Bx * self.twist.linear.x
-                    uy = Ky * (y_des - self.position.y) - By * self.twist.linear.y
-                    uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
+            current_time = rospy.get_time()
+            elapsed_time = current_time - time_st
+            if elapsed_time < 50:
+                uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
+                ux = 0.2
+                uy = 0
+                
+            elif elapsed_time > 50:
 
-                    print(f'X= {self.position.x}, Y= {self.position.y}, Z= {self.current_range}')
-                    print(f'DES_X= {x_des}, DES_Y= {y_des}, DES_Z = {des_range}')
+                ux = Kx * (10 - self.position.x) - Bx * self.twist.linear.x
+                uy = Ky * (10 - self.position.y) - By * self.twist.linear.y
+                uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
 
-                    cmd_msg = Twist() 
-                    cmd_msg.linear.z = uz
-                    cmd_msg.linear.x = ux
-                    cmd_msg.linear.y = uy
-                    self.cmd_pub.publish(cmd_msg)
+                print(f'X= {self.position.x}, Y= {self.position.y}, Z= {self.current_range}')
+                print(f'DES_X= {10}, DES_Y= {10}, DES_Z = {des_range}')
 
-                    self.rate = rospy.sleep(0.1)
-                point_list_real.append((self.position.x, self.position.y))
-                    
+            cmd_msg = Twist() 
+            cmd_msg.linear.z = uz
+            cmd_msg.linear.x = ux
+            cmd_msg.linear.y = uy
+            self.cmd_pub.publish(cmd_msg)
 
-                if len(point_list) == len(point_list_real):
-                    print(point_list_real)
-                    #plot_trajectory(points_des=point_list, points_real=point_list_real)
+            self.rate = rospy.sleep(0.1)
 
-
-def plot_trajectory(points_des = None, points_real = None):
-    plt.figure(figsize=(20, 20)) 
-
-    des_x = [coord[0] for coord in points_des]
-    des_y = [coord[1] for coord in points_des]
-
-    real_x = [coord[0] + 1 for coord in points_real]
-    real_y = [coord[1] + 1 for coord in points_real]
-    print(des_x, real_x)
-    print(des_y, real_y)
-
-    plt.plot(real_x, real_y, marker='x', label='Real Trajectory')
-    plt.plot(des_x, des_y, marker='o', label='Desired Trajectory')
-
-    plt.grid()
-    plt.xlabel('X', fontsize=14)
-    plt.ylabel('Y', fontsize=14)
-    plt.title('Trajectory Plot', fontsize=16)
-    plt.legend(fontsize=12) 
-
-    plt.xticks(fontsize=8)
-    plt.yticks(fontsize=8)
-
-    ax = plt.gca()
-    ax.set_xticks(np.arange(min(des_x + real_x), max(des_x + real_x) + 1, 1))
-
-    plt.savefig('src/hector_quadrotor/controller/trajectory.png')
-    #plt.show()
 
 def main():
     ctrl = PathNode()
