@@ -30,7 +30,7 @@ class PathNode:
 
         rospy.init_node("controller_node")
         rospy.Subscriber("/ground_truth/state", Odometry, self.state_callback)  
-        rospy.Subscriber("/asus_camera/rgb/image_raw", Image, self.image_callback_rgb)
+        #rospy.Subscriber("/asus_camera/rgb/image_raw", Image, self.image_callback_rgb)
         #rospy.Subscriber("/asus_camera/depth/image_raw", Image, self.image_callback_depth)
         rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.define_borders)
         rospy.Subscriber("/sonar_height", Range, self.read_laser_data_alt)
@@ -117,14 +117,14 @@ class PathNode:
                     cy = int(np.average(cy_list))
                     self.y_error = msg.width / 2 - cy
 
-                # cv2.circle(cv_image, (top_line_point, 10), 5, (0, 0, 255), -1)
-                # cv2.circle(cv_image, (mid_line_point, int(msg.height/2)), 5, (0, 255, 0), -1)
+                cv2.circle(cv_image, (top_line_point, 10), 5, (0, 0, 255), -1)
+                cv2.circle(cv_image, (mid_line_point, int(msg.height/2)), 5, (0, 255, 0), -1)
 
-                # cv2.circle(cv_image, self.dot_position, 5, (255, 0, 0), -1)
-                # cv2.drawContours(cv_image, [largest_contour], -1, (0, 255, 0), 3)
+                cv2.circle(cv_image, self.dot_position, 5, (255, 0, 0), -1)
+                cv2.drawContours(cv_image, [largest_contour], -1, (0, 255, 0), 3)
 
-                # cv2.imshow("Downward Image", cv_image)
-                # cv2.waitKey(3)
+                cv2.imshow("Downward Image", cv_image)
+                cv2.waitKey(3)
                 # cv2.imshow("Grey Image", gray)
 
     def read_laser_data_alt(self,msg):
