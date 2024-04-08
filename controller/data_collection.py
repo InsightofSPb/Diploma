@@ -14,11 +14,13 @@ Kz = 0.2
 Bz = 0.5
 
 Kx = 0.005
-Bx = 0.2
+Bx = 0.02
 
 Ky = 0.005
-By = 0.2
+By = 0.02
 
+Kw = 0.03
+Bw = 0.1
 
 des_range = 4
 
@@ -42,7 +44,10 @@ class PathNode:
         self.position = Point()
         self.twist = Twist()
         self.current_range = 0.0
+        self.omega_error = 0
+        self.omega_error_prev = 0
         self.dot_position = None
+        self.dot_middle = None
         
         self.bridge = CvBridge()
     
@@ -84,9 +89,22 @@ class PathNode:
             
             if contours:
                 largest_contour = max(contours, key=cv2.contourArea)
-                topmost_point = tuple(largest_contour[largest_contour[:,:,1].argmin()][0])
-                self.dot_position = topmost_point  # Update the dot position
-                cv2.circle(cv_image, topmost_point, 5, (0, 0, 255), -1)
+                topmost_points = sorted(largest_contour, key=lambda x: x[0][1])[:1]
+                avg_x = int(sum(point[0][0] for point in topmost_points) / 1)
+                avg_y = int(sum(point[0][1] for point in topmost_points) / 1)
+                self.dot_position = (avg_x, avg_y)
+
+                top_points = np.where(thresh[10] >= 0)
+                mid_points = np.where(thresh[int(msg.height / 2)] >= 0)
+                if  (not np.isnan(np.average(top_points)) and not np.isnan(np.average(mid_points))):
+                    top_line_point = int(np.average(top_points))
+                    mid_line_point = int(np.average(mid_points))
+                    self.omega_error = top_line_point - avg_x
+
+                cv2.circle(cv_image, (top_line_point, 10), 5, (0, 0, 255), -1)
+                cv2.circle(cv_image, (mid_line_point, int(msg.height/2)), 5, (0, 255, 0), -1)
+
+                cv2.circle(cv_image, self.dot_position, 5, (255, 0, 0), -1)
                 cv2.drawContours(cv_image, [largest_contour], -1, (0, 255, 0), 3)
             
         except CvBridgeError as e:
@@ -109,25 +127,28 @@ class PathNode:
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
-            if elapsed_time < 5:
+            if elapsed_time < 10:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
-                ux = 0
+                ux = 0.2
                 uy = 0
+                uw = 0
                 
             else:
-                # Calculate the error between the drone's position and the dot's position
                 error_x = self.dot_position[0] - self.position.x
                 error_y = self.dot_position[1] - self.position.y
-                
-                # Adjust the drone's velocity based on the error
+
                 ux = Kx * error_x - Bx * self.twist.linear.x
                 uy = Ky * error_y - By * self.twist.linear.y
                 uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
+                uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
+
+                self.omega_error_prev = self.omega_error
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
             cmd_msg.linear.x = ux
             cmd_msg.linear.y = uy
+            cmd_msg.angular.z = uw
             self.cmd_pub.publish(cmd_msg)
 
             self.rate = rospy.sleep(0.1)
