@@ -9,18 +9,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cv_bridge import CvBridge, CvBridgeError
 
-
 Kz = 0.2
 Bz = 0.5
 
-Kx = 0.005
-Bx = 0.02
+Ky = 0.05
+By = 0.01
 
-Ky = 0.005
-By = 0.02
+Kw = 0.1
+Bw = 0.001
 
-Kw = 0.03
-Bw = 0.1
 
 des_range = 4
 
@@ -46,8 +43,10 @@ class PathNode:
         self.current_range = 0.0
         self.omega_error = 0
         self.omega_error_prev = 0
+        self.y_error = 0
+        self.y_error_prev = 0
+
         self.dot_position = None
-        self.dot_middle = None
         
         self.bridge = CvBridge()
     
@@ -83,37 +82,50 @@ class PathNode:
     def define_borders(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        except CvBridgeError as e:
+            print(e)
+
+        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if contours:
+            # Filter contours based on area
+            min_area = 100  # Adjust this value based on your requirements
+            filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_area]
             
-            if contours:
-                largest_contour = max(contours, key=cv2.contourArea)
+            if filtered_contours:
+                largest_contour = max(filtered_contours, key=cv2.contourArea)
                 topmost_points = sorted(largest_contour, key=lambda x: x[0][1])[:1]
                 avg_x = int(sum(point[0][0] for point in topmost_points) / 1)
                 avg_y = int(sum(point[0][1] for point in topmost_points) / 1)
                 self.dot_position = (avg_x, avg_y)
-
-                top_points = np.where(thresh[10] >= 0)
+                
+                # Implement Kalman filter or Median Flow tracking here
+                # Update the tracked position based on the Kalman filter prediction
+                
+                top_points = np.where(thresh[0] >= 0)
                 mid_points = np.where(thresh[int(msg.height / 2)] >= 0)
-                if  (not np.isnan(np.average(top_points)) and not np.isnan(np.average(mid_points))):
+                if (not np.isnan(np.average(top_points)) and not np.isnan(np.average(mid_points))):
                     top_line_point = int(np.average(top_points))
                     mid_line_point = int(np.average(mid_points))
-                    self.omega_error = top_line_point - avg_x
+                    self.omega_error = avg_x - mid_line_point
+                
+                _, cy_list = np.where(thresh >= 0)
+                if not np.isnan(np.average(cy_list)):
+                    cy = int(np.average(cy_list))
+                    self.y_error = msg.width / 2 - cy
 
                 cv2.circle(cv_image, (top_line_point, 10), 5, (0, 0, 255), -1)
                 cv2.circle(cv_image, (mid_line_point, int(msg.height/2)), 5, (0, 255, 0), -1)
 
                 cv2.circle(cv_image, self.dot_position, 5, (255, 0, 0), -1)
                 cv2.drawContours(cv_image, [largest_contour], -1, (0, 255, 0), 3)
-            
-        except CvBridgeError as e:
-            print(e)
-        
-        finally:
-            cv2.imshow("Downward Image", cv_image)
-            cv2.waitKey(3)
-            #cv2.imshow("Grey Image", gray)
+
+                cv2.imshow("Downward Image", cv_image)
+                cv2.waitKey(3)
+                #cv2.imshow("Grey Image", gray)
 
     def read_laser_data_alt(self,msg):
         self.current_range = msg.range
@@ -129,26 +141,24 @@ class PathNode:
             elapsed_time = current_time - time_st
             if elapsed_time < 10:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
-                ux = 0.2
+                ux = 0.5
                 uy = 0
                 uw = 0
                 
             else:
-                error_x = self.dot_position[0] - self.position.x
-                error_y = self.dot_position[1] - self.position.y
+                ux = 1
+                uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
+                self.y_error_prev = self.y_error
 
-                ux = Kx * error_x - Bx * self.twist.linear.x
-                uy = Ky * error_y - By * self.twist.linear.y
                 uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
                 uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
-
                 self.omega_error_prev = self.omega_error
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
             cmd_msg.linear.x = ux
             cmd_msg.linear.y = uy
-            cmd_msg.angular.z = uw
+            cmd_msg.angular.z = -uw
             self.cmd_pub.publish(cmd_msg)
 
             self.rate = rospy.sleep(0.1)
