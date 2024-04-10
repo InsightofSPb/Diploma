@@ -19,7 +19,7 @@ Kw = 0.1
 Bw = 0.0001
 
 
-des_range = 3.5
+des_range = 3.0
 
 
 start_pos = (25, -30)
@@ -158,10 +158,14 @@ class PathNode:
                 self.y_error_prev = self.y_error
 
                 uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
+                print(des_range, self.current_range)
                 uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
                 self.omega_error_prev = self.omega_error
 
-                self.pile_info.test(coordinates=self.dot_position)
+                self.pile_info.contour_info(coordinates=self.dot_position)
+                self.pile_info.drone_positions(pose_x=self.position.x,
+                                               pose_y=self.position.y,
+                                               pose_z=self.position.z)
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
@@ -175,18 +179,25 @@ class PathNode:
 
 class PileInfromation():
     def __init__(self) -> None:
-        print('I was created')
+        print(f'Instance of {self.__class__.__name__} was created!')
         self.middle_point = []
         self.contour_coordinates = []
         self.exploration_start_point = None
         self.exploration_end_point = None
+        self.pile_height = []
+        self.exploration_trajectory = []
 
     def __str__(self) -> str:
-        return f"Storage class for infomation about the pile"
+        return f"Storage class for infomation about the pile's coordinates"
 
-    def test(self, coordinates):
+    def contour_info(self, coordinates: tuple = None):
         self.contour_coordinates.append(coordinates)
-        print(f'{len(self.contour_coordinates)}')
+    
+    def drone_positions(self, pose_x: float = None, pose_y: float = None, pose_z: float = None):
+        coords = tuple([pose_x, pose_y, pose_z])
+        self.exploration_trajectory.append(coords)
+        print(self.exploration_trajectory[-1])
+        print('---------------------------------')
 
 def main():
     ctrl = PathNode()
