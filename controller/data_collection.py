@@ -22,9 +22,6 @@ Bw = 0.0001
 des_range = 3.0
 
 
-start_pos = (25, -30)
-
-
 class PathNode:
     def __init__(self, rate=10) -> None:
 
@@ -51,7 +48,7 @@ class PathNode:
 
         self.dot_position = None
         self.line_offset = True
-        self.offset_dist = 1
+        self.offset_dist = 0.5
 
     
     @staticmethod
@@ -158,7 +155,6 @@ class PathNode:
                 self.y_error_prev = self.y_error
 
                 uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
-                print(des_range, self.current_range)
                 uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
                 self.omega_error_prev = self.omega_error
 
@@ -166,6 +162,10 @@ class PathNode:
                 self.pile_info.drone_positions(pose_x=self.position.x,
                                                pose_y=self.position.y,
                                                pose_z=self.position.z)
+                if elapsed_time > 20:
+                    self.pile_info.define_loop(finish_pose=self.position)
+                    if self.pile_info.flag:
+                        print('I am working!!!!!!!!!!!!!!!!!!!')
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
@@ -181,9 +181,10 @@ class PileInfromation():
     def __init__(self) -> None:
         print(f'Instance of {self.__class__.__name__} was created!')
         self.middle_point = []
+        self.flag = False
         self.contour_coordinates = []
-        self.exploration_start_point = None
-        self.exploration_end_point = None
+        self.exploration_start_point = tuple()
+        self.exploration_end_point = list()
         self.pile_height = []
         self.exploration_trajectory = []
 
@@ -196,8 +197,16 @@ class PileInfromation():
     def drone_positions(self, pose_x: float = None, pose_y: float = None, pose_z: float = None):
         coords = tuple([pose_x, pose_y, pose_z])
         self.exploration_trajectory.append(coords)
-        print(self.exploration_trajectory[-1])
-        print('---------------------------------')
+
+    # TODO: make start_pose the real start pose, not the first point after time
+    def define_loop(self, start_pose: list = None, finish_pose: list = None):
+        start_pose = np.array([self.exploration_trajectory[0]], dtype=float)
+        finish_pose = np.array([finish_pose.x, finish_pose.y, finish_pose.z], dtype=float)
+        if np.allclose(start_pose, finish_pose, rtol=1, atol=1):
+            print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            self.flag = True
+
+
 
 def main():
     ctrl = PathNode()
