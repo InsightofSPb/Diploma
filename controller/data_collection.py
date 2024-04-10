@@ -19,7 +19,7 @@ Kw = 0.1
 Bw = 0.0001
 
 
-des_range = 3
+des_range = 3.5
 
 
 start_pos = (25, -30)
@@ -37,6 +37,7 @@ class PathNode:
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1) 
         self.rate = rospy.Rate(rate)
         self.enable_motors()
+        self.bridge = CvBridge()
 
         self.position = Point()
         self.twist = Twist()
@@ -47,8 +48,9 @@ class PathNode:
         self.y_error_prev = 0
 
         self.dot_position = None
-        
-        self.bridge = CvBridge()
+        self.line_offset = True
+        self.offset_dist = 1
+
     
     @staticmethod
     def enable_motors():
@@ -139,15 +141,18 @@ class PathNode:
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
-            if elapsed_time < 5:
+            if elapsed_time < 2:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
                 ux = 0.5
                 uy = 0
                 uw = 0
                 
             else:
+                if self.line_offset:
+                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0) + self.offset_dist
+                else:
+                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
                 ux = 1
-                uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
                 self.y_error_prev = self.y_error
 
                 uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z

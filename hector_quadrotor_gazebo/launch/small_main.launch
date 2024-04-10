@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+
+<launch>
+  <arg name="paused" default="false"/>
+
+  <include file="$(find hector_gazebo_worlds)/launch/small_rolling.launch">
+  </include>
+
+  <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_main.launch" />
+</launch>

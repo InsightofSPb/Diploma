@@ -5,15 +5,15 @@ from cv_bridge import CvBridge
 import numpy as np
 
 # Specify the path to your ROS bag file
-BAG_FILE = '/home/s/dipl/src/hector_quadrotor/controller/base_separate.bag'
+BAG_FILE = '/home/s/dipl/src/hector_quadrotor/controller/solid_small35.bag'
 
 # Specify the image topics you want to extract
 IMAGE_TOPIC_RGB = '/asus_camera/rgb/image_raw'
 IMAGE_TOPIC_DEPTH = '/asus_camera/depth/image_raw'
 
 # Specify the output directories for the extracted images
-OUTPUT_DIR_RGB = 'image'
-OUTPUT_DIR_DEPTH = 'depth'
+OUTPUT_DIR_RGB = 'controller/solid/small/image'
+OUTPUT_DIR_DEPTH = 'controller/solid/small/depth'
 
 # Create the output directories if they don't exist
 if not os.path.exists(OUTPUT_DIR_RGB):
@@ -26,11 +26,11 @@ bridge = CvBridge()
 
 # Open the ROS bag file
 with rosbag.Bag(BAG_FILE, 'r') as bag:
-    # i = 0
-    # for topic, msg, t in bag.read_messages(topics=[IMAGE_TOPIC_RGB]):
-    #     cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
-    #     cv2.imwrite(os.path.join(OUTPUT_DIR_RGB, f"frame{i}.png"), cv_image)
-    #     i += 1
+    i = 0
+    for topic, msg, t in bag.read_messages(topics=[IMAGE_TOPIC_RGB]):
+        cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
+        cv2.imwrite(os.path.join(OUTPUT_DIR_RGB, f"frame{i}.png"), cv_image)
+        i += 1
     
     # Extract and save Depth images
     j = 0
