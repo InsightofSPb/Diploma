@@ -29,10 +29,12 @@ class PathNode:
     def __init__(self, rate=10) -> None:
 
         rospy.init_node("controller_node")
+        self.pile_info = PileInfromation()
+
         rospy.Subscriber("/ground_truth/state", Odometry, self.state_callback)  
         #rospy.Subscriber("/asus_camera/rgb/image_raw", Image, self.image_callback_rgb)
         #rospy.Subscriber("/asus_camera/depth/image_raw", Image, self.image_callback_depth)
-        rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.define_borders)
+        rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.follow_border)
         rospy.Subscriber("/sonar_height", Range, self.read_laser_data_alt)
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1) 
         self.rate = rospy.Rate(rate)
@@ -81,7 +83,7 @@ class PathNode:
         except CvBridgeError as e:
             print(e)
 
-    def define_borders(self, msg):
+    def follow_border(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         except CvBridgeError as e:
@@ -159,15 +161,32 @@ class PathNode:
                 uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
                 self.omega_error_prev = self.omega_error
 
+                self.pile_info.test(coordinates=self.dot_position)
+
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
             cmd_msg.linear.x = ux
             cmd_msg.linear.y = uy
             cmd_msg.angular.z = -uw
             self.cmd_pub.publish(cmd_msg)
-
             self.rate = rospy.sleep(0.1)
 
+
+
+class PileInfromation():
+    def __init__(self) -> None:
+        print('I was created')
+        self.middle_point = []
+        self.contour_coordinates = []
+        self.exploration_start_point = None
+        self.exploration_end_point = None
+
+    def __str__(self) -> str:
+        return f"Storage class for infomation about the pile"
+
+    def test(self, coordinates):
+        self.contour_coordinates.append(coordinates)
+        print(f'{len(self.contour_coordinates)}')
 
 def main():
     ctrl = PathNode()
