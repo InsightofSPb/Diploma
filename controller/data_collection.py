@@ -19,24 +19,24 @@ Kw = 0.1
 Bw = 0.0001
 
 
-des_range = 3
-
-
-start_pos = (25, -30)
+des_range = 3.0
 
 
 class PathNode:
     def __init__(self, rate=10) -> None:
 
         rospy.init_node("controller_node")
+        self.pile_info = PileInfromation()
+
         rospy.Subscriber("/ground_truth/state", Odometry, self.state_callback)  
         #rospy.Subscriber("/asus_camera/rgb/image_raw", Image, self.image_callback_rgb)
         #rospy.Subscriber("/asus_camera/depth/image_raw", Image, self.image_callback_depth)
-        rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.define_borders)
+        rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.follow_border)
         rospy.Subscriber("/sonar_height", Range, self.read_laser_data_alt)
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1) 
         self.rate = rospy.Rate(rate)
         self.enable_motors()
+        self.bridge = CvBridge()
 
         self.position = Point()
         self.twist = Twist()
@@ -47,8 +47,9 @@ class PathNode:
         self.y_error_prev = 0
 
         self.dot_position = None
-        
-        self.bridge = CvBridge()
+        self.line_offset = True
+        self.offset_dist = 0.5
+
     
     @staticmethod
     def enable_motors():
@@ -79,7 +80,7 @@ class PathNode:
         except CvBridgeError as e:
             print(e)
 
-    def define_borders(self, msg):
+    def follow_border(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         except CvBridgeError as e:
@@ -139,20 +140,32 @@ class PathNode:
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
-            if elapsed_time < 5:
+            if elapsed_time < 2:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
                 ux = 0.5
                 uy = 0
                 uw = 0
                 
             else:
+                if self.line_offset:
+                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0) + self.offset_dist
+                else:
+                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
                 ux = 1
-                uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
                 self.y_error_prev = self.y_error
 
                 uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
                 uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
                 self.omega_error_prev = self.omega_error
+
+                self.pile_info.contour_info(coordinates=self.dot_position)
+                self.pile_info.drone_positions(pose_x=self.position.x,
+                                               pose_y=self.position.y,
+                                               pose_z=self.position.z)
+                if elapsed_time > 20:
+                    self.pile_info.define_loop(finish_pose=self.position)
+                    if self.pile_info.flag:
+                        print('I am working!!!!!!!!!!!!!!!!!!!')
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
@@ -160,8 +173,39 @@ class PathNode:
             cmd_msg.linear.y = uy
             cmd_msg.angular.z = -uw
             self.cmd_pub.publish(cmd_msg)
-
             self.rate = rospy.sleep(0.1)
+
+
+
+class PileInfromation():
+    def __init__(self) -> None:
+        print(f'Instance of {self.__class__.__name__} was created!')
+        self.middle_point = []
+        self.flag = False
+        self.contour_coordinates = []
+        self.exploration_start_point = tuple()
+        self.exploration_end_point = list()
+        self.pile_height = []
+        self.exploration_trajectory = []
+
+    def __str__(self) -> str:
+        return f"Storage class for infomation about the pile's coordinates"
+
+    def contour_info(self, coordinates: tuple = None):
+        self.contour_coordinates.append(coordinates)
+    
+    def drone_positions(self, pose_x: float = None, pose_y: float = None, pose_z: float = None):
+        coords = tuple([pose_x, pose_y, pose_z])
+        self.exploration_trajectory.append(coords)
+
+    # TODO: make start_pose the real start pose, not the first point after time
+    def define_loop(self, start_pose: list = None, finish_pose: list = None):
+        start_pose = np.array([self.exploration_trajectory[0]], dtype=float)
+        finish_pose = np.array([finish_pose.x, finish_pose.y, finish_pose.z], dtype=float)
+        if np.allclose(start_pose, finish_pose, rtol=1, atol=1):
+            print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            self.flag = True
+
 
 
 def main():

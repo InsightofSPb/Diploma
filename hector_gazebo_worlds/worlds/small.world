@@ -35,12 +35,12 @@
     </light>
     <model name="pile_of_coal">
       <link name="pile_of_coal_link">
-        <pose>10 10 0.2 0 0 0</pose>
+        <pose>0 0 0.2 0 0 0</pose>
         <collision name="pile_of_coal_collision">
           <geometry>
             <mesh>
               <uri>file://pile_separate_1.dae</uri>
-              <scale>4 4 3</scale>
+              <scale>1 1 1</scale>
             </mesh>
           </geometry>
         </collision>
@@ -48,30 +48,7 @@
           <geometry>
             <mesh>
               <uri>file://pile_separate_1.dae</uri>
-              <scale>4 4 3</scale>
-            </mesh>
-          </geometry>
-          <cast_shadows>false</cast_shadows>
-        </visual>
-      </link>
-      <static>true</static>
-    </model>
-    <model name="pile_of_coal_small">
-      <link name="pile_of_coal_link_small">
-        <pose>-13 -1.5 1 0 0 0</pose>
-        <collision name="pile_of_coal_collision_small">
-          <geometry>
-            <mesh>
-              <uri>file://stone.dae</uri>
-              <scale>1 1 0.7</scale>
-            </mesh>
-          </geometry>
-        </collision>
-        <visual name="pile_of_coal_small">
-          <geometry>
-            <mesh>
-              <uri>file://stone.dae</uri>
-              <scale>1 1 0.7</scale>
+              <scale>1 1 1</scale>
             </mesh>
           </geometry>
           <cast_shadows>false</cast_shadows>
