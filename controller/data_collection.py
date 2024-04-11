@@ -192,7 +192,9 @@ class PileInfromation():
         return f"Storage class for infomation about the pile's coordinates"
 
     def contour_info(self, coordinates: tuple = None):
-        self.contour_coordinates.append(coordinates)
+        if not self.flag:
+            self.contour_coordinates.append(coordinates)
+            print(len(self.contour_coordinates))
     
     def drone_positions(self, pose_x: float = None, pose_y: float = None, pose_z: float = None):
         coords = tuple([pose_x, pose_y, pose_z])
@@ -205,8 +207,9 @@ class PileInfromation():
         if np.allclose(start_pose, finish_pose, rtol=1, atol=1):
             print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
             self.flag = True
-
-
+    
+    def follow_exploration_trajectory(self):
+        pass
 
 def main():
     ctrl = PathNode()
