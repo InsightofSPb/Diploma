@@ -24,7 +24,7 @@
       <max_step_size>0.001</max_step_size>
     </physics>
     <light type="directional" name="directional_light_1">
-      <pose>0 20 20 0.1 0.1 0</pose>
+      <pose>0 0 0 0.1 0.1 0</pose>
       <diffuse>1 1 1 1</diffuse>
       <specular>1 1 1 1</specular>
       <attenuation>

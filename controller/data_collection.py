@@ -1,12 +1,13 @@
-import rospy
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Point, Twist
-from hector_uav_msgs.srv import EnableMotors
-from hector_uav_msgs.msg import Altimeter
-from sensor_msgs.msg import PointCloud2, Image, Range
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+import rospy
+
+from hector_uav_msgs.srv import EnableMotors
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Point, Twist
+from sensor_msgs.msg import Image, Range
 from cv_bridge import CvBridge, CvBridgeError
 
 Kz = 0.2
@@ -14,6 +15,15 @@ Bz = 0.5
 
 Ky = 0.05
 By = 0.01
+
+Kx = 0.05
+Bx = 0.01
+
+Kx_1 = 0.001
+Bx_1 = 0.01
+
+Ky_1 = 0.001
+By_1 = 0.01
 
 Kw = 0.1
 Bw = 0.0001
@@ -49,6 +59,8 @@ class PathNode:
         self.dot_position = None
         self.line_offset = True
         self.offset_dist = 0.5
+
+        self.counter = 0
 
     
     @staticmethod
@@ -140,6 +152,7 @@ class PathNode:
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
+            point_index = 0
             if elapsed_time < 2:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
                 ux = 0.5
@@ -165,7 +178,43 @@ class PathNode:
                 if elapsed_time > 20:
                     self.pile_info.define_loop(finish_pose=self.position)
                     if self.pile_info.flag:
-                        print('I am working!!!!!!!!!!!!!!!!!!!')
+                        min_x = min(coord[0] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
+                        max_x = max(coord[0] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
+                        min_y = min(coord[1] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)]) 
+                        max_y = max(coord[1] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
+                        points = [[min_x - 0.3 * min_x, min_y - 0.3 * min_y], 
+                                  [min_x - 0.3 * min_x, max_y - 0.3 * max_y], 
+                                  [max_x - 0.3 * max_x, max_y - 0.3 * max_y], 
+                                  [max_x - 0.3 * max_x, min_y - 0.3 * min_y],
+                                  [(max_x + min_x) / 2, (min_y + max_y) / 2]]
+                        y_error_prev_p = 0
+                        x_error_prev_p = 0
+                        if point_index < len(points):
+                            target_x, target_y = points[self.counter]
+                            print(f'Targets {target_x}, {target_y}, point index = {self.counter}')
+                            print(self.position.x, self.position.y)
+                            # Calculate errors based on current position and target point
+                            x_error_p = target_x - self.position.x
+                            y_error_p = target_y - self.position.y
+
+                            # Calculate control inputs based on errors
+                            ux = Kx_1 * x_error_p - Bx_1 * (x_error_p - x_error_prev_p) / (1.0 / 50.0)
+                            uy = Ky_1 * y_error_p - By_1 * (y_error_p - y_error_prev_p) / (1.0 / 50.0)
+                            uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
+                            uw = 0
+                            y_error_prev_p = y_error_p
+                            x_error_prev_p = x_error_p
+                            print(f'Errors: {x_error_p}, {y_error_p}')
+
+                            if np.allclose([x_error_p, y_error_p], [0, 0], rtol=0.5, atol=0.5):
+                                self.counter += 1
+                        else:
+                            ux = 0
+                            uy = 0
+                            uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
+                            uw = 0
+                            
+
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
@@ -194,7 +243,6 @@ class PileInfromation():
     def contour_info(self, coordinates: tuple = None):
         if not self.flag:
             self.contour_coordinates.append(coordinates)
-            print(len(self.contour_coordinates))
     
     def drone_positions(self, pose_x: float = None, pose_y: float = None, pose_z: float = None):
         coords = tuple([pose_x, pose_y, pose_z])
@@ -205,7 +253,6 @@ class PileInfromation():
         start_pose = np.array([self.exploration_trajectory[0]], dtype=float)
         finish_pose = np.array([finish_pose.x, finish_pose.y, finish_pose.z], dtype=float)
         if np.allclose(start_pose, finish_pose, rtol=1, atol=1):
-            print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
             self.flag = True
     
     def follow_exploration_trajectory(self):
