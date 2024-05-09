@@ -215,7 +215,7 @@ class PathNode:
                                                     pose_z=self.position.z,
                                                     z_range=self.current_range)
                 
-                if elapsed_time > 30:
+                if elapsed_time > 3000000000000000000000000000000000000000000:
                     self.pile_info.define_loop(finish_pose=self.position)
                     if self.pile_info.flag:
 
@@ -293,14 +293,53 @@ class PathNode:
                                         angle_difference = atan2(y_des - self.position.y, x_des - self.position.x) - self.orientation.z
                                         print(f' angle_difference = {angle_difference}')
 
-                                while not np.allclose([self.position.x, self.position.y], [x_des, y_des], rtol=0.05, atol=1):
-                                    ux, error_sum_x, last_error_x = self.calculate_pid(x_des, self.position.x, error_sum_x, last_error_x, Kp=0.005, Ki=0.01, Kd=0.005, dt=dt)
-                                    uy, error_sum_y, last_error_y = self.calculate_pid(y_des, self.position.y, error_sum_y, last_error_y, Kp=0.005, Ki=0.01, Kd=0.005, dt=dt)
+                                while abs(x_des - self.position.x) > 1.0 and abs(y_des - self.position.y) > 1.0:
+
+                                    print(abs(x_des - self.position.x))
+                                    print(abs(y_des - self.position.y))
+
+                                    ux_f = Kx * (x_des - self.position.x) - Bx * self.twist.linear.x
+                                    uy_f = Ky * (y_des - self.position.y) - By * self.twist.linear.y
                                     uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
                                     
                                     print(f'x_des = {x_des}, y_des = {y_des}')
                                     print(f'self.position.x = {self.position.x}, self.position.y = {self.position.y}')
+                                    
+                                    if x_des >= 0:
+                                        if self.position.x <= 0:
+                                            ux = abs(ux_f)
+                                        elif self.position.x > 0:
+                                            if x_des < self.position.x:
+                                                ux = -abs(ux_f)
+                                            else:
+                                                ux = abs(ux_f)
+                                    elif x_des < 0:
+                                        if self.position.x <= 0:
+                                            if x_des < self.position.x:
+                                                ux = -abs(ux_f)
+                                            else:
+                                                ux = -abs(ux_f)
+                                        else:
+                                            ux = abs(ux_f)
 
+                                    if y_des >= 0:
+                                        if self.position.y <= 0:
+                                            uy = abs(uy_f)
+                                        elif self.position.y > 0:
+                                            if y_des < self.position.y:
+                                                uy = -abs(uy_f)
+                                            else:
+                                                uy = abs(uy_f)
+                                    elif y_des < 0:
+                                        if self.position.y <= 0:
+                                            if y_des < self.position.y:
+                                                uy = -abs(uy_f)
+                                            else:
+                                                uy = -abs(uy_f)
+                                        else:
+                                            uy = abs(uy_f)
+
+                                    print(f'UX = {ux}, UY = {uy}')
                                     cmd_msg = Twist()
                                     cmd_msg.linear.x = ux
                                     cmd_msg.linear.y = uy
