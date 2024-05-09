@@ -40,12 +40,9 @@ class PathNode:
         rospy.init_node("controller_node")
         self.pile_info = PileInfromation()
 
-        self.pile_info = PileInfromation()
-
         rospy.Subscriber("/ground_truth/state", Odometry, self.state_callback)  
         #rospy.Subscriber("/asus_camera/rgb/image_raw", Image, self.image_callback_rgb)
         #rospy.Subscriber("/asus_camera/depth/image_raw", Image, self.image_callback_depth)
-        rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.follow_border)
         rospy.Subscriber("/downward_cam/downward_camera/image", Image, self.follow_border)
         rospy.Subscriber("/sonar_height", Range, self.read_laser_data_alt)
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1) 
@@ -63,9 +60,6 @@ class PathNode:
 
         self.dot_position = None
         self.line_offset = True
-        self.offset_dist = 0.5
-
-        self.counter = 0
         self.offset_dist = 0.5
 
         self.counter = 0
@@ -100,7 +94,6 @@ class PathNode:
         except CvBridgeError as e:
             print(e)
 
-    def follow_border(self, msg):
     def follow_border(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
@@ -265,39 +258,6 @@ class PathNode:
             self.cmd_pub.publish(cmd_msg)
             self.rate = rospy.sleep(0.1)
 
-
-
-class PileInfromation():
-    def __init__(self) -> None:
-        print(f'Instance of {self.__class__.__name__} was created!')
-        self.middle_point = []
-        self.flag = False
-        self.contour_coordinates = []
-        self.exploration_start_point = tuple()
-        self.exploration_end_point = list()
-        self.pile_height = []
-        self.exploration_trajectory = []
-
-    def __str__(self) -> str:
-        return f"Storage class for infomation about the pile's coordinates"
-
-    def contour_info(self, coordinates: tuple = None):
-        if not self.flag:
-            self.contour_coordinates.append(coordinates)
-    
-    def drone_positions(self, pose_x: float = None, pose_y: float = None, pose_z: float = None):
-        coords = tuple([pose_x, pose_y, pose_z])
-        self.exploration_trajectory.append(coords)
-
-    # TODO: make start_pose the real start pose, not the first point after time
-    def define_loop(self, start_pose: list = None, finish_pose: list = None):
-        start_pose = np.array([self.exploration_trajectory[0]], dtype=float)
-        finish_pose = np.array([finish_pose.x, finish_pose.y, finish_pose.z], dtype=float)
-        if np.allclose(start_pose, finish_pose, rtol=1, atol=1):
-            self.flag = True
-    
-    def follow_exploration_trajectory(self):
-        pass
 
 
 class PileInfromation():
