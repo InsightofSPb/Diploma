@@ -1,14 +1,17 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import math
 import rospy
+import time
+import os
+from math import atan2, pi, cos, sin, radians
 
 from hector_uav_msgs.srv import EnableMotors
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point, Twist
 from sensor_msgs.msg import Image, Range
 from cv_bridge import CvBridge, CvBridgeError
+from tf.transformations import euler_from_quaternion
 
 Kz = 0.2
 Bz = 0.5
@@ -19,17 +22,21 @@ By = 0.01
 Kx = 0.05
 Bx = 0.01
 
-Kx_1 = 0.001
-Bx_1 = 0.01
+Kx_1 = 0.03
+Bx_1 = 0.03
 
-Ky_1 = 0.001
-By_1 = 0.01
+Ky_1 = 0.03
+By_1 = 0.03
 
 Kw = 0.1
 Bw = 0.0001
 
 
-des_range = 3.0
+des_range = 7
+
+Kx_c = 0.1
+Ky_c = 0.1
+
 
 
 class PathNode:
@@ -50,6 +57,7 @@ class PathNode:
 
         self.position = Point()
         self.twist = Twist()
+        self.orientation = Point()
         self.current_range = 0.0
         self.omega_error = 0
         self.omega_error_prev = 0
@@ -58,9 +66,12 @@ class PathNode:
 
         self.dot_position = None
         self.line_offset = True
-        self.offset_dist = 0.5
+        self.offset_dist =  0.0
 
         self.counter = 0
+
+        self.omega_error_circle = 0
+        self.omega_error_circle_prev = 0
 
     
     @staticmethod
@@ -147,13 +158,34 @@ class PathNode:
         self.position = msg.pose.pose.position
         self.twist = msg.twist.twist
 
+    def calculate_pid(self, setpoint, actual, error_sum, last_error, Kp, Ki, Kd, dt):
+        error = setpoint - actual
+        error_sum += error * dt
+        d_error = (error - last_error) / dt
+        last_error = error
+        output = Kp * error + Ki * error_sum + Kd * d_error
+        return output, error_sum, last_error
+
+
     def spin(self):
+        pile_height = []
+        coordinates = 'contour.txt'
+        height = 'trajectory_with_range.txt'
         time_st = rospy.get_time()
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
             point_index = 0
-            if elapsed_time < 2:
+            print(elapsed_time)
+            
+            if elapsed_time < 10:
+                uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
+                ux = 0
+                uy = 0
+                uw = 0
+
+
+            elif elapsed_time >= 10 and elapsed_time  <= 14:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
                 ux = 0.5
                 uy = 0
@@ -161,60 +193,79 @@ class PathNode:
                 
             else:
                 if self.line_offset:
-                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0) + self.offset_dist
+                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
                 else:
                     uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
-                ux = 1
+                ux = 1.0
                 self.y_error_prev = self.y_error
 
-                uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
+                uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
+                # uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
                 uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
                 self.omega_error_prev = self.omega_error
+
+                pile_height.append(self.current_range)
 
                 self.pile_info.contour_info(coordinates=self.dot_position)
                 self.pile_info.drone_positions(pose_x=self.position.x,
                                                pose_y=self.position.y,
                                                pose_z=self.position.z)
-                if elapsed_time > 20:
+                self.pile_info.drone_positions_full(pose_x=self.position.x,
+                                                    pose_y=self.position.y,
+                                                    pose_z=self.position.z,
+                                                    z_range=self.current_range)
+                
+                if elapsed_time > 60:
                     self.pile_info.define_loop(finish_pose=self.position)
                     if self.pile_info.flag:
+
+                        if not os.path.exists(coordinates):
+                            with open(coordinates, 'w') as file:
+                                for item in self.pile_info.exploration_trajectory_full:
+                                    file.write(str(item) + '\n')
+                            print(f"Список сохранен в файл {coordinates}")
+
                         min_x = min(coord[0] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
                         max_x = max(coord[0] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
                         min_y = min(coord[1] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)]) 
                         max_y = max(coord[1] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
-                        points = [[min_x - 0.3 * min_x, min_y - 0.3 * min_y], 
-                                  [min_x - 0.3 * min_x, max_y - 0.3 * max_y], 
-                                  [max_x - 0.3 * max_x, max_y - 0.3 * max_y], 
-                                  [max_x - 0.3 * max_x, min_y - 0.3 * min_y],
-                                  [(max_x + min_x) / 2, (min_y + max_y) / 2]]
-                        y_error_prev_p = 0
-                        x_error_prev_p = 0
-                        if point_index < len(points):
-                            target_x, target_y = points[self.counter]
-                            print(f'Targets {target_x}, {target_y}, point index = {self.counter}')
-                            print(self.position.x, self.position.y)
-                            # Calculate errors based on current position and target point
-                            x_error_p = target_x - self.position.x
-                            y_error_p = target_y - self.position.y
+                        # print(f'max_x = {max_x}, min_x = {min_x}')
+                        # print(f'max_y = {max_y}, min_y = {min_y}')
 
-                            # Calculate control inputs based on errors
-                            ux = Kx_1 * x_error_p - Bx_1 * (x_error_p - x_error_prev_p) / (1.0 / 50.0)
-                            uy = Ky_1 * y_error_p - By_1 * (y_error_p - y_error_prev_p) / (1.0 / 50.0)
-                            uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
-                            uw = 0
-                            y_error_prev_p = y_error_p
-                            x_error_prev_p = x_error_p
-                            print(f'Errors: {x_error_p}, {y_error_p}')
+                        if not self.pile_info.circle_flag_1:
+                            circle_information = self.pile_info.find_inscribed_circle(min_x=min_x,
+                                                                                    min_y=min_y,
+                                                                                    max_y=max_y,
+                                                                                    max_x=max_x)
+                            print(f'circle information = {circle_information}')
+                        if not self.pile_info.circle_flag_2:
+                            circle_trajectory = self.pile_info.generate_circle_points(center_x=circle_information[0],
+                                                                                    center_y=circle_information[1],
+                                                                                    radius=circle_information[2])
+                            print(f'circle trajectory = {circle_trajectory}')
+                        
+                        if self.pile_info.circle_flag_2:
+                            points = circle_trajectory
+                            for point in points:
 
-                            if np.allclose([x_error_p, y_error_p], [0, 0], rtol=0.5, atol=0.5):
-                                self.counter += 1
-                        else:
-                            ux = 0
-                            uy = 0
-                            uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
-                            uw = 0
-                            
+                                x = point[0]
+                                y = point[1]
 
+                                while not np.allclose([x, y], [self.position.x, self.position.y], rtol=0.1, atol=0.2):
+                                    ux = Kx * (x - self.position.x) - Bx * self.twist.linear.x
+                                    uy = Ky * (y - self.position.y) - By * self.twist.linear.y
+                                    uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
+
+                                    print(f'x = {x}, y = {y}')
+                                    print(f'x_act = {self.position.x}, y_act = {self.position.y}')
+
+                                    cmd_msg = Twist() 
+                                    cmd_msg.linear.z = uz
+                                    cmd_msg.linear.x = -ux
+                                    cmd_msg.linear.y = -uy
+                                    cmd_msg.angular.z = 0
+                                    self.cmd_pub.publish(cmd_msg)
+                                    self.rate = rospy.sleep(0.1)
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
@@ -236,6 +287,9 @@ class PileInfromation():
         self.exploration_end_point = list()
         self.pile_height = []
         self.exploration_trajectory = []
+        self.exploration_trajectory_full = []
+        self.circle_flag_1 = False
+        self.circle_flag_2 = False
 
     def __str__(self) -> str:
         return f"Storage class for infomation about the pile's coordinates"
@@ -248,15 +302,41 @@ class PileInfromation():
         coords = tuple([pose_x, pose_y, pose_z])
         self.exploration_trajectory.append(coords)
 
+    def drone_positions_full(self, pose_x: float = None, pose_y: float = None, pose_z: float = None, z_range: float = None):
+        coords = tuple([pose_x, pose_y, pose_z, z_range])
+        self.exploration_trajectory_full.append(coords)
+
     # TODO: make start_pose the real start pose, not the first point after time
     def define_loop(self, start_pose: list = None, finish_pose: list = None):
         start_pose = np.array([self.exploration_trajectory[0]], dtype=float)
         finish_pose = np.array([finish_pose.x, finish_pose.y, finish_pose.z], dtype=float)
-        if np.allclose(start_pose, finish_pose, rtol=1, atol=1):
+        if np.allclose(start_pose, finish_pose, rtol=0.25, atol=0.4):
             self.flag = True
+        
+    def find_inscribed_circle(self, min_x, min_y, max_x, max_y, radius_step = 0.3):
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        
+        width = abs(max_x - min_x)
+        height = abs(max_y - min_y)
+        radius = min(width, height) / 2 - min(width, height) * radius_step
+        self.circle_flag_1 = True
+                
+        return center_x, center_y, radius
     
-    def follow_exploration_trajectory(self):
-        pass
+    def generate_circle_points(self, center_x, center_y, radius, step_angle=10):
+        points = []
+        angle = 270
+        while angle < 525:
+            x = center_x + radius * cos(radians(angle))
+            y = center_y + radius * sin(radians(angle))
+            points.append((x, y))
+            angle += step_angle
+
+            if angle >= 525:
+                self.circle_flag_2 = True
+
+        return points
 
 def main():
     ctrl = PathNode()

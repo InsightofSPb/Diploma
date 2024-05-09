@@ -2,10 +2,10 @@ import os
 import shutil
 
 # Исходная папка с файлами
-source_folder = "/home/s/dipl/src/hector_quadrotor/controller/small/image"
+source_folder = "/home/s/dipl/src/hector_quadrotor/controller/base"
 
 # Папка назначения для сохранения каждого 10-го файла
-destination_folder = "/home/s/dipl/src/hector_quadrotor/controller/small/image_small"
+destination_folder = "/home/s/dipl/src/hector_quadrotor/controller/base/small"
 
 # Получаем список всех файлов в исходной папке
 files = os.listdir(source_folder)

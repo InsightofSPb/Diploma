@@ -3,7 +3,7 @@
 <launch>
    <arg name="name" default="quadrotor"/>
    <arg name="tf_prefix" default="$(optenv ROS_NAMESPACE)"/>
-   <arg name="x" default="-10.0"/> <!-- -15, 28 for big, -7, 5 for small separate -->
+   <arg name="x" default="-15.0"/> <!-- -15, 28 for big, -7, 5 for small separate -->
    <arg name="y" default="0.0"/>  <!-- -15, 28 for big, -10, 0 for small solid -->
    <arg name="z" default="0.8"/>
 
