@@ -66,7 +66,7 @@ class PathNode:
 
         self.dot_position = None
         self.line_offset = True
-        self.offset_dist = 0.5
+        self.offset_dist =  0.0
 
         self.counter = 0
 
@@ -157,7 +157,6 @@ class PathNode:
     def state_callback(self, msg):
         self.position = msg.pose.pose.position
         self.twist = msg.twist.twist
-        self.orientation = msg.pose.pose.orientation
 
     def calculate_pid(self, setpoint, actual, error_sum, last_error, Kp, Ki, Kd, dt):
         error = setpoint - actual
@@ -177,6 +176,7 @@ class PathNode:
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
             point_index = 0
+            print(elapsed_time)
             
             if elapsed_time < 10:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
@@ -193,7 +193,7 @@ class PathNode:
                 
             else:
                 if self.line_offset:
-                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0) + self.offset_dist
+                    uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
                 else:
                     uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
                 ux = 1.0
@@ -215,7 +215,7 @@ class PathNode:
                                                     pose_z=self.position.z,
                                                     z_range=self.current_range)
                 
-                if elapsed_time > 3000000000000000000000000000000000000000000:
+                if elapsed_time > 60:
                     self.pile_info.define_loop(finish_pose=self.position)
                     if self.pile_info.flag:
 
@@ -224,15 +224,6 @@ class PathNode:
                                 for item in self.pile_info.exploration_trajectory_full:
                                     file.write(str(item) + '\n')
                             print(f"Список сохранен в файл {coordinates}")
-
-                        uy = Ky * self.y_error - By * (self.y_error - self.y_error_prev) / (1.0 / 10.0)
-                        ux = 1.0
-                        self.y_error_prev = self.y_error
-
-                        uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
-                        # uz = Kz * (des_range - 1 - self.current_range) - Bz * self.twist.linear.z
-                        uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
-                        self.omega_error_prev = self.omega_error
 
                         min_x = min(coord[0] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
                         max_x = max(coord[0] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
@@ -255,111 +246,27 @@ class PathNode:
                         
                         if self.pile_info.circle_flag_2:
                             points = circle_trajectory
-                            error_sum_x, error_sum_y = 0, 0
-                            last_error_x, last_error_y = 0, 0
-                            dt = 0.1
-                            last_angle_error = 0
-
                             for point in points:
-                                x_des, y_des = point
-                                target_angle = atan2(y_des - self.position.y, x_des - self.position.x)
-                                angle_difference = target_angle - self.orientation.z
-                                print(f'angle_difference first = {angle_difference}')
 
-                                while angle_difference > pi:
-                                    angle_difference -= 2 * pi
-                                while angle_difference < -pi:
-                                    angle_difference += 2 * pi
-                                if angle_difference > 0:
-                                    while abs(angle_difference) > 0.3:  # Threshold for angular error
-                                        uw = 0.1 * angle_difference - 0.1 * (angle_difference - last_angle_error) / dt
-                                        last_angle_error = angle_difference
-                                        cmd_msg = Twist()
-                                        cmd_msg.angular.z = uw
-                                        self.cmd_pub.publish(cmd_msg)
-                                        rospy.sleep(dt)
-                                        # Update angle_difference as the drone turns
-                                        angle_difference = atan2(y_des - self.position.y, x_des - self.position.x) - self.orientation.z
-                                        print(f' angle_difference = {angle_difference}')
-                                else:
-                                    while abs(angle_difference) > 0.3:  # Threshold for angular error
-                                        uw = 0.1 * angle_difference - 0.1 * (angle_difference - last_angle_error) / dt
-                                        last_angle_error = angle_difference
-                                        cmd_msg = Twist()
-                                        cmd_msg.angular.z = -uw
-                                        self.cmd_pub.publish(cmd_msg)
-                                        rospy.sleep(dt)
-                                        # Update angle_difference as the drone turns
-                                        angle_difference = atan2(y_des - self.position.y, x_des - self.position.x) - self.orientation.z
-                                        print(f' angle_difference = {angle_difference}')
+                                x = point[0]
+                                y = point[1]
 
-                                while abs(x_des - self.position.x) > 1.0 and abs(y_des - self.position.y) > 1.0:
-
-                                    print(abs(x_des - self.position.x))
-                                    print(abs(y_des - self.position.y))
-
-                                    ux_f = Kx * (x_des - self.position.x) - Bx * self.twist.linear.x
-                                    uy_f = Ky * (y_des - self.position.y) - By * self.twist.linear.y
+                                while not np.allclose([x, y], [self.position.x, self.position.y], rtol=0.1, atol=0.2):
+                                    ux = Kx * (x - self.position.x) - Bx * self.twist.linear.x
+                                    uy = Ky * (y - self.position.y) - By * self.twist.linear.y
                                     uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
-                                    
-                                    print(f'x_des = {x_des}, y_des = {y_des}')
-                                    print(f'self.position.x = {self.position.x}, self.position.y = {self.position.y}')
-                                    
-                                    if x_des >= 0:
-                                        if self.position.x <= 0:
-                                            ux = abs(ux_f)
-                                        elif self.position.x > 0:
-                                            if x_des < self.position.x:
-                                                ux = -abs(ux_f)
-                                            else:
-                                                ux = abs(ux_f)
-                                    elif x_des < 0:
-                                        if self.position.x <= 0:
-                                            if x_des < self.position.x:
-                                                ux = -abs(ux_f)
-                                            else:
-                                                ux = -abs(ux_f)
-                                        else:
-                                            ux = abs(ux_f)
 
-                                    if y_des >= 0:
-                                        if self.position.y <= 0:
-                                            uy = abs(uy_f)
-                                        elif self.position.y > 0:
-                                            if y_des < self.position.y:
-                                                uy = -abs(uy_f)
-                                            else:
-                                                uy = abs(uy_f)
-                                    elif y_des < 0:
-                                        if self.position.y <= 0:
-                                            if y_des < self.position.y:
-                                                uy = -abs(uy_f)
-                                            else:
-                                                uy = -abs(uy_f)
-                                        else:
-                                            uy = abs(uy_f)
+                                    print(f'x = {x}, y = {y}')
+                                    print(f'x_act = {self.position.x}, y_act = {self.position.y}')
 
-                                    print(f'UX = {ux}, UY = {uy}')
-                                    cmd_msg = Twist()
-                                    cmd_msg.linear.x = ux
-                                    cmd_msg.linear.y = uy
+                                    cmd_msg = Twist() 
                                     cmd_msg.linear.z = uz
+                                    cmd_msg.linear.x = -ux
+                                    cmd_msg.linear.y = -uy
                                     cmd_msg.angular.z = 0
                                     self.cmd_pub.publish(cmd_msg)
-                                    rospy.sleep(dt)
-                                    
-                            # else:
-                            #     ux = 0
-                            #     uy = 0
-                            #     uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
-                            #     uw = 0
+                                    self.rate = rospy.sleep(0.1)
 
-                            #     if not os.path.exists(height):
-                            #         with open(height, 'w') as file:
-                            #             for item in self.pile_info.exploration_trajectory_full:
-                            #                 file.write(str(item) + '\n')
-                            #         print(f"Список сохранен в файл {height}")
-                            
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
             cmd_msg.linear.x = ux
@@ -403,10 +310,10 @@ class PileInfromation():
     def define_loop(self, start_pose: list = None, finish_pose: list = None):
         start_pose = np.array([self.exploration_trajectory[0]], dtype=float)
         finish_pose = np.array([finish_pose.x, finish_pose.y, finish_pose.z], dtype=float)
-        if np.allclose(start_pose, finish_pose, rtol=0.5, atol=0.5):
+        if np.allclose(start_pose, finish_pose, rtol=0.25, atol=0.4):
             self.flag = True
         
-    def find_inscribed_circle(self, min_x, min_y, max_x, max_y, radius_step = 0.1):
+    def find_inscribed_circle(self, min_x, min_y, max_x, max_y, radius_step = 0.3):
         center_x = (min_x + max_x) / 2
         center_y = (min_y + max_y) / 2
         
@@ -419,14 +326,14 @@ class PileInfromation():
     
     def generate_circle_points(self, center_x, center_y, radius, step_angle=10):
         points = []
-        angle = 240
-        while angle < 595:
+        angle = 270
+        while angle < 525:
             x = center_x + radius * cos(radians(angle))
             y = center_y + radius * sin(radians(angle))
             points.append((x, y))
             angle += step_angle
 
-            if angle >= 595:
+            if angle >= 525:
                 self.circle_flag_2 = True
 
         return points
