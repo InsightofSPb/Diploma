@@ -39,16 +39,39 @@
         <collision name="pile_of_coal_collision">
           <geometry>
             <mesh>
-              <uri>file://pile_solid_1.dae</uri>
-              <scale>0.3 0.3 0.2</scale>
+              <uri>file://pile_separate_1.dae</uri>
+              <scale>2 2 2</scale>
             </mesh>
           </geometry>
         </collision>
         <visual name="pile_of_coal">
           <geometry>
             <mesh>
-              <uri>file://pile_solid_1.dae</uri>
-              <scale>0.3 0.3 0.2</scale>
+              <uri>file://pile_separate_1.dae</uri>
+              <scale>2 2 2</scale>
+            </mesh>
+          </geometry>
+          <cast_shadows>false</cast_shadows>
+        </visual>
+      </link>
+      <static>true</static>
+    </model>
+    <model name="pile_of_coal_1">
+      <link name="pile_of_coal_link_1">
+        <pose>-5.7 -2.6 0.2 0 0 0</pose>
+        <collision name="pile_of_coal_collision_1">
+          <geometry>
+            <mesh>
+              <uri>file://stone.dae</uri>
+              <scale>0.2 0.2 0.5</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="pile_of_coal_1">
+          <geometry>
+            <mesh>
+              <uri>file://stone.dae</uri>
+              <scale>0.2 0.2 0.5</scale>
             </mesh>
           </geometry>
           <cast_shadows>false</cast_shadows>
@@ -64,7 +87,7 @@
           <geometry>
             <mesh>
               <uri>file://plane.dae</uri>
-              <scale>2 2 1</scale>
+              <scale>3 3 1</scale>
             </mesh>
           </geometry>
         </collision>
@@ -72,7 +95,7 @@
           <geometry>
             <mesh>
               <uri>file://plane.dae</uri>
-              <scale>2 2 1</scale>
+              <scale>3 3 1</scale>
             </mesh>
           </geometry>
           <cast_shadows>false</cast_shadows>
