@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import rospy
 import time
 import os
-from math import atan2, pi, cos, sin, radians
+from math import cos, sin, radians
+from datetime import datetime
 
 from hector_uav_msgs.srv import EnableMotors
 from nav_msgs.msg import Odometry
@@ -22,11 +23,11 @@ By = 0.01
 Kx = 0.05
 Bx = 0.01
 
-Kx_1 = 0.03
+Kx_1 = 0.1
 Bx_1 = 0.03
 
-Ky_1 = 0.03
-By_1 = 0.03
+Ky_1 = 0.1
+By_1 = 0.1
 
 Kw = 0.1
 Bw = 0.0001
@@ -34,16 +35,12 @@ Bw = 0.0001
 
 des_range = 7
 
-Kx_c = 0.1
-Ky_c = 0.1
-
-
 
 class PathNode:
     def __init__(self, rate=10) -> None:
 
         rospy.init_node("controller_node")
-        self.pile_info = PileInfromation()
+        self.pile_info = PileInformation()
 
         rospy.Subscriber("/ground_truth/state", Odometry, self.state_callback)  
         #rospy.Subscriber("/asus_camera/rgb/image_raw", Image, self.image_callback_rgb)
@@ -169,14 +166,20 @@ class PathNode:
 
     def spin(self):
         pile_height = []
-        coordinates = 'contour.txt'
-        height = 'trajectory_with_range.txt'
+        current_time_sys = datetime.now().strftime("%H_%M_%d_%m")
+        coordinates = f'contour_{current_time_sys}.txt'
+        trajectory = f'trajectory_with_range_{current_time_sys}.txt'
         time_st = rospy.get_time()
+        final = False
         while not rospy.is_shutdown():
             current_time = rospy.get_time()
             elapsed_time = current_time - time_st
-            point_index = 0
-            print(elapsed_time)
+
+            self.pile_info.drone_positions_full(pose_x=self.position.x,
+                                    pose_y=self.position.y,
+                                    pose_z=self.position.z,
+                                    z_range=self.current_range,
+                                    time=elapsed_time)
             
             if elapsed_time < 10:
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
@@ -200,7 +203,6 @@ class PathNode:
                 self.y_error_prev = self.y_error
 
                 uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
-                # uz = Kz * (des_range - self.current_range) - Bz * self.twist.linear.z
                 uw = Kw * self.omega_error - Bw * (self.omega_error - self.omega_error_prev) / (1.0 / 50.0)
                 self.omega_error_prev = self.omega_error
 
@@ -210,10 +212,6 @@ class PathNode:
                 self.pile_info.drone_positions(pose_x=self.position.x,
                                                pose_y=self.position.y,
                                                pose_z=self.position.z)
-                self.pile_info.drone_positions_full(pose_x=self.position.x,
-                                                    pose_y=self.position.y,
-                                                    pose_z=self.position.z,
-                                                    z_range=self.current_range)
                 
                 if elapsed_time > 60:
                     self.pile_info.define_loop(finish_pose=self.position)
@@ -229,35 +227,36 @@ class PathNode:
                         max_x = max(coord[0] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
                         min_y = min(coord[1] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)]) 
                         max_y = max(coord[1] for coord in self.pile_info.exploration_trajectory[:len(self.pile_info.contour_coordinates)])
-                        # print(f'max_x = {max_x}, min_x = {min_x}')
-                        # print(f'max_y = {max_y}, min_y = {min_y}')
 
                         if not self.pile_info.circle_flag_1:
                             circle_information = self.pile_info.find_inscribed_circle(min_x=min_x,
                                                                                     min_y=min_y,
                                                                                     max_y=max_y,
-                                                                                    max_x=max_x)
+                                                                                    max_x=max_x,
+                                                                                    radius_step=0.2)
                             print(f'circle information = {circle_information}')
                         if not self.pile_info.circle_flag_2:
                             circle_trajectory = self.pile_info.generate_circle_points(center_x=circle_information[0],
                                                                                     center_y=circle_information[1],
-                                                                                    radius=circle_information[2])
+                                                                                    radius=circle_information[2],
+                                                                                    step_angle=30)
                             print(f'circle trajectory = {circle_trajectory}')
                         
                         if self.pile_info.circle_flag_2:
                             points = circle_trajectory
+                            counter_visited = 0
                             for point in points:
 
                                 x = point[0]
                                 y = point[1]
 
-                                while not np.allclose([x, y], [self.position.x, self.position.y], rtol=0.1, atol=0.2):
-                                    ux = Kx * (x - self.position.x) - Bx * self.twist.linear.x
-                                    uy = Ky * (y - self.position.y) - By * self.twist.linear.y
+                                while not np.allclose([x, y], [self.position.x, self.position.y], rtol=0.08, atol=0.15):
+                                    ux = Kx_1 * (x - self.position.x) - Bx_1 * self.twist.linear.x
+                                    uy = Ky_1 * (y - self.position.y) - By_1 * self.twist.linear.y
                                     uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
 
-                                    print(f'x = {x}, y = {y}')
-                                    print(f'x_act = {self.position.x}, y_act = {self.position.y}')
+                                    # print(f'x = {x}, y = {y}')
+                                    # print(f'x_act = {self.position.x}, y_act = {self.position.y}')
 
                                     cmd_msg = Twist() 
                                     cmd_msg.linear.z = uz
@@ -266,6 +265,164 @@ class PathNode:
                                     cmd_msg.angular.z = 0
                                     self.cmd_pub.publish(cmd_msg)
                                     self.rate = rospy.sleep(0.1)
+
+                                    current_time = rospy.get_time()
+                                    elapsed_time = current_time - time_st
+                                    self.pile_info.drone_positions_full(pose_x=self.position.x,
+                                                                        pose_y=self.position.y,
+                                                                        pose_z=self.position.z,
+                                                                        z_range=self.current_range,
+                                                                        time=elapsed_time)
+                                counter_visited += 1
+                                print(f'{counter_visited} points out of {len(points)} visited')
+
+                                if counter_visited == len(points):
+                                    print("All points visited, going to the next circle!")
+                                    self.pile_info.circle_flag_1 = False
+                                    self.pile_info.circle_flag_2 = False
+                                    print(self.pile_info.circle_flag_1)
+                                    print(self.pile_info.circle_flag_2)
+                                    break
+                        if not self.pile_info.circle_flag_1:
+                            circle_information = self.pile_info.find_inscribed_circle(min_x=min_x,
+                                                                                    min_y=min_y,
+                                                                                    max_y=max_y,
+                                                                                    max_x=max_x,
+                                                                                    radius_step=0.3)
+                            print(f'circle information = {circle_information}')
+                        if not self.pile_info.circle_flag_2:
+                            circle_trajectory = self.pile_info.generate_circle_points(center_x=circle_information[0],
+                                                                                    center_y=circle_information[1],
+                                                                                    radius=circle_information[2],
+                                                                                    step_angle=30)
+                            print(f'circle trajectory = {circle_trajectory}')
+                        
+                        if self.pile_info.circle_flag_2:
+                            points = circle_trajectory
+                            counter_visited = 0
+                            for point in points:
+
+                                x = point[0]
+                                y = point[1]
+
+                                while not np.allclose([x, y], [self.position.x, self.position.y], rtol=0.06 ,atol=0.1):
+                                    ux = Kx_1 * (x - self.position.x) - Bx_1 * self.twist.linear.x
+                                    uy = Ky_1 * (y - self.position.y) - By_1 * self.twist.linear.y
+                                    uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
+
+                                    # print(f'x = {x}, y = {y}')
+                                    # print(f'x_act = {self.position.x}, y_act = {self.position.y}')
+
+                                    cmd_msg = Twist() 
+                                    cmd_msg.linear.z = uz
+                                    cmd_msg.linear.x = -ux
+                                    cmd_msg.linear.y = -uy
+                                    cmd_msg.angular.z = 0
+                                    self.cmd_pub.publish(cmd_msg)
+                                    self.rate = rospy.sleep(0.1)
+
+                                    current_time = rospy.get_time()
+                                    elapsed_time = current_time - time_st
+                                    self.pile_info.drone_positions_full(pose_x=self.position.x,
+                                                                        pose_y=self.position.y,
+                                                                        pose_z=self.position.z,
+                                                                        z_range=self.current_range,
+                                                                        time=elapsed_time)
+                                counter_visited += 1
+                                print(f'{counter_visited} points out of {len(points)} visited')
+
+                                if counter_visited == len(points):
+                                    print("All points visited, going to the next circle!")
+                                    self.pile_info.circle_flag_1 = False
+                                    self.pile_info.circle_flag_2 = False
+                                    print(self.pile_info.circle_flag_1)
+                                    print(self.pile_info.circle_flag_2)
+                                    break
+
+                        if not self.pile_info.circle_flag_1:
+                            circle_information = self.pile_info.find_inscribed_circle(min_x=min_x,
+                                                                                    min_y=min_y,
+                                                                                    max_y=max_y,
+                                                                                    max_x=max_x,
+                                                                                    radius_step=0.4)
+                            
+                            print(f'circle information = {circle_information}')
+                        if not self.pile_info.circle_flag_2:
+                            circle_trajectory = self.pile_info.generate_circle_points(center_x=circle_information[0],
+                                                                                    center_y=circle_information[1],
+                                                                                    radius=circle_information[2],
+                                                                                    step_angle=30)
+                            print(f'circle trajectory = {circle_trajectory}')
+                        
+                        if self.pile_info.circle_flag_2:
+                            points = circle_trajectory
+                            counter_visited = 0
+                            for point in points:
+
+                                x = point[0]
+                                y = point[1]
+
+                                while not np.allclose([x, y], [self.position.x, self.position.y], rtol=0.04, atol=0.08):
+                                    ux = Kx_1 * (x - self.position.x) - Bx_1 * self.twist.linear.x
+                                    uy = Ky_1 * (y - self.position.y) - By_1 * self.twist.linear.y
+                                    uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
+
+                                    cmd_msg = Twist() 
+                                    cmd_msg.linear.z = uz
+                                    cmd_msg.linear.x = -ux
+                                    cmd_msg.linear.y = -uy
+                                    cmd_msg.angular.z = 0
+                                    self.cmd_pub.publish(cmd_msg)
+                                    self.rate = rospy.sleep(0.1)
+
+                                    current_time = rospy.get_time()
+                                    elapsed_time = current_time - time_st
+                                    self.pile_info.drone_positions_full(pose_x=self.position.x,
+                                                                        pose_y=self.position.y,
+                                                                        pose_z=self.position.z,
+                                                                        z_range=self.current_range,
+                                                                        time=elapsed_time)
+                                counter_visited += 1
+                                print(f'{counter_visited} points out of {len(points)} visited')
+
+                                if counter_visited == len(points):
+                                    print("All points visited, going to the middle!")
+                                    final = True
+                                    break
+
+
+                        if final:
+                            print("All points visited, going to the middle!")
+                            x_fin, y_fin = circle_information[0], circle_information[1]
+                            while not np.allclose([x_fin, y_fin], [self.position.x, self.position.y], rtol=0.03, atol=0.05):
+                                ux = Kx_1 * (x_fin - self.position.x) - Bx_1 * self.twist.linear.x
+                                uy = Ky_1 * (y_fin - self.position.y) - By_1 * self.twist.linear.y
+                                uz = Kz * (des_range - self.position.z) - Bz * self.twist.linear.z
+                                print('Going to the middle')
+
+                                cmd_msg = Twist() 
+                                cmd_msg.linear.z = uz
+                                cmd_msg.linear.x = -ux
+                                cmd_msg.linear.y = -uy
+                                cmd_msg.angular.z = 0
+                                self.cmd_pub.publish(cmd_msg)
+                                self.rate = rospy.sleep(0.1)
+
+                                current_time = rospy.get_time()
+                                elapsed_time = current_time - time_st
+                                self.pile_info.drone_positions_full(pose_x=self.position.x,
+                                                                    pose_y=self.position.y,
+                                                                    pose_z=self.position.z,
+                                                                    z_range=self.current_range,
+                                                                    time=elapsed_time)
+
+                                if np.allclose([x_fin, y_fin], [self.position.x, self.position.y], rtol=0.05, atol=0.1):
+                                    finish = True
+                                    if not os.path.exists(trajectory):
+                                        with open(trajectory, 'w') as file:
+                                            for item in self.pile_info.exploration_trajectory_full:
+                                                file.write(str(item) + '\n')
+                                        print(f"Список сохранен в файл {trajectory}")                            
 
             cmd_msg = Twist() 
             cmd_msg.linear.z = uz
@@ -277,7 +434,7 @@ class PathNode:
 
 
 
-class PileInfromation():
+class PileInformation():
     def __init__(self) -> None:
         print(f'Instance of {self.__class__.__name__} was created!')
         self.middle_point = []
@@ -302,15 +459,16 @@ class PileInfromation():
         coords = tuple([pose_x, pose_y, pose_z])
         self.exploration_trajectory.append(coords)
 
-    def drone_positions_full(self, pose_x: float = None, pose_y: float = None, pose_z: float = None, z_range: float = None):
-        coords = tuple([pose_x, pose_y, pose_z, z_range])
+    def drone_positions_full(self, pose_x: float = None, pose_y: float = None, pose_z: float = None, 
+                             z_range: float = None, time: float = None):
+        coords = tuple([pose_x, pose_y, pose_z, z_range, time])
         self.exploration_trajectory_full.append(coords)
 
     # TODO: make start_pose the real start pose, not the first point after time
     def define_loop(self, start_pose: list = None, finish_pose: list = None):
         start_pose = np.array([self.exploration_trajectory[0]], dtype=float)
         finish_pose = np.array([finish_pose.x, finish_pose.y, finish_pose.z], dtype=float)
-        if np.allclose(start_pose, finish_pose, rtol=0.25, atol=0.4):
+        if np.allclose(start_pose, finish_pose, rtol=0.25, atol=0.2):
             self.flag = True
         
     def find_inscribed_circle(self, min_x, min_y, max_x, max_y, radius_step = 0.3):
@@ -326,14 +484,14 @@ class PileInfromation():
     
     def generate_circle_points(self, center_x, center_y, radius, step_angle=10):
         points = []
-        angle = 270
-        while angle < 525:
+        angle = 250
+        while angle < 605:
             x = center_x + radius * cos(radians(angle))
             y = center_y + radius * sin(radians(angle))
             points.append((x, y))
             angle += step_angle
 
-            if angle >= 525:
+            if angle >= 605:
                 self.circle_flag_2 = True
 
         return points
