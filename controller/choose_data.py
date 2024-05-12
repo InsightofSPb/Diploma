@@ -2,10 +2,10 @@ import os
 import shutil
 
 # Исходная папка с файлами
-source_folder = "/home/s/dipl/src/hector_quadrotor/controller/base"
+source_folder = "/home/s/dipl/src/hector_quadrotor/controller/results/19_56_12/base"
 
 # Папка назначения для сохранения каждого 10-го файла
-destination_folder = "/home/s/dipl/src/hector_quadrotor/controller/base/small"
+destination_folder = "results/19_56_12/small"
 
 # Получаем список всех файлов в исходной папке
 files = os.listdir(source_folder)
@@ -14,7 +14,7 @@ files = os.listdir(source_folder)
 files.sort()
 
 # Перебираем файлы с шагом 10
-for i in range(0, len(files), 5):
+for i in range(0, len(files), 20):
     file_name = files[i]
     source_path = os.path.join(source_folder, file_name)
     destination_path = os.path.join(destination_folder, file_name)

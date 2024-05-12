@@ -4,7 +4,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 
 
-file_path = '/home/s/dipl/src/hector_quadrotor/controller/trajectory_with_range_16_07_12_05.txt'
+file_path = '/home/s/dipl/src/hector_quadrotor/controller/trajectory_with_range_18_42_12_05.txt'
 
 # Read the data
 with open(file_path, 'r') as file:

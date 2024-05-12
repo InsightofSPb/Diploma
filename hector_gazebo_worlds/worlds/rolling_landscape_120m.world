@@ -35,7 +35,7 @@
     </light>
     <model name="pile_of_coal">
       <link name="pile_of_coal_link">
-        <pose>0 0 0.2 0 0 0</pose>
+        <pose>30 30 0.2 0 0 0</pose>
         <collision name="pile_of_coal_collision">
           <geometry>
             <mesh>
